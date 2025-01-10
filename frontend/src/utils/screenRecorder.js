@@ -1,4 +1,4 @@
-export const screenRecorder = async () => {
+export const screenRecorder = async (recordTime) => {
   try{
     const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true});
     const recorder = new MediaRecorder(stream);
@@ -29,7 +29,7 @@ export const screenRecorder = async () => {
     setTimeout(() => {
       recorder.stop();
       console.log('Recording stopped');
-    }, 5000);
+    }, recordTime);
   }
   catch(err){
     console.error(err)
