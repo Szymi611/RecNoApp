@@ -1,12 +1,11 @@
 import React from "react";
-import { screenRecorder } from "../utils/screenRecorder.js";
+import { startScreenRecorder, stopScreenRecorder } from "../utils/screenRecorder.js";
 import Modal from "../components/Modal.jsx";
 import CircleButton from "./CircleButton.jsx";
 import { useState } from "react";
 import "../App.css";
 
 const divs = [];
-const recordTime = 300000;
 
 for (let i = 0; i < 6; i++) {
   divs.push(
@@ -19,18 +18,18 @@ for (let i = 0; i < 6; i++) {
 
 const VintageTV = () => {
   const [isRecording, setIsRecording] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const handleStartRecording = () => {
-    screenRecorder(recordTime);
+  const handleStartRecording = async () => {
+    await startScreenRecorder();
     setIsRecording(true);
   };
-
-  const handleStopRecording = () => {
+  
+  const handleStopRecording = async () => {
+    await stopScreenRecorder();
     setIsRecording(false);
-    screenRecorder
-  }
+  };
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const handleOpenModal = () => {
     setIsModalOpen(true);
@@ -53,7 +52,7 @@ const VintageTV = () => {
 
         <div className="bg-coalBlack shadow w-[200px] h-[505px] flex flex-col items-center justify-center">
           {isRecording ? (
-            <CircleButton onClick={handleStartRecording}>Stop</CircleButton>
+            <CircleButton onClick={handleStopRecording}>Stop</CircleButton>
           ) : (
             <CircleButton onClick={handleStartRecording}>Start</CircleButton>
           )}

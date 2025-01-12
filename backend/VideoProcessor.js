@@ -4,6 +4,7 @@ const fs = require('fs').promises;
 const { PDFDocument, rgb} = require('pdf-lib'); 
 const fontkit = require('@pdf-lib/fontkit'); 
 const path = require('path');
+const FormData = require('form-data');
 const express = require('express');
 const multer = require('multer');
 const OpenAI = require('openai');

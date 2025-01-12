@@ -38,7 +38,7 @@ const upload = multer({
         }
     },
     limits: {
-        fileSize: 500 * 1024 * 1024 // 500MB limit
+        fileSize: 1000 * 1024 * 1024 // 500MB limit
     }
 });
 
@@ -67,8 +67,10 @@ app.get('/health', (req, res) => {
 
 app.post('/upload', upload.single('video'), async (req, res) => {
     if (!req.file) {
+        console.log('No file uploaded');
         return res.status(400).json({ error: 'No video file uploaded' });
     }
+    console.log('File received:', req.file);
 
     try {
        
