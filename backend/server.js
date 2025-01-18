@@ -22,19 +22,19 @@ const storage = multer.diskStorage({
     cb(null, `${uniqueSuffix}${path.extname(file.originalname)}`);
   },
 });
-
-const upload = multer({
-  storage: storage,
-  fileFilter: (req, file, cb) => {
-    const allowedMimes = ["video/mp4", "video/webm", "video/ogg"];
-    if (allowedMimes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(
-        new Error(
-          "Invalid file type. Only MP4, WebM and OGG video files are allowed."
-        )
-      );
+const upload = multer({ 
+    storage: storage,
+    fileFilter: (req, file, cb) => {
+   
+        const allowedMimes = ['video/mp4', 'video/webm', 'video/ogg'];
+        if (allowedMimes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Invalid file type. Only MP4, WebM and OGG video files are allowed.'));
+        }
+    },
+    limits: {
+        fileSize: 1000 * 1024 * 1024 // 500MB limit
     }
   },
   limits: {
@@ -64,8 +64,10 @@ app.get("/health", (req, res) => {
 
 app.post('/upload', upload.single('video'), async (req, res) => {
     if (!req.file) {
+        console.log('No file uploaded');
         return res.status(400).json({ error: 'No video file uploaded' });
     }
+    console.log('File received:', req.file);
 
     console.log('File uploaded:', req.file);
     console.log('File size:', req.file.size);
