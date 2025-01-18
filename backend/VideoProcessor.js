@@ -1,8 +1,8 @@
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 const fs = require('fs').promises;
-const { PDFDocument, rgb} = require('pdf-lib'); 
-const fontkit = require('@pdf-lib/fontkit'); 
+const { PDFDocument, rgb } = require('pdf-lib'); 
+const fontkit = require('@pdf-lib/fontkit');  // Add this line
 const path = require('path');
 const FormData = require('form-data');
 const express = require('express');
@@ -14,9 +14,133 @@ ffmpeg.setFfmpegPath(ffmpegPath);
 class VideoProcessor {
     constructor(openAiApiKey) {
         this.openai = new OpenAI({
-            apiKey: process.env.OPENAI_API_KEY
+            apiKey: ""
         });
     }
+
+    async copyFile(source, target) {
+        console.log(`Copying file from ${source} to ${target}`);
+        try {
+            // Read the source file
+            const data = await fs.readFile(source);
+            // Write to the target path
+            await fs.writeFile(target, data);
+            console.log('File copy completed');
+            
+            // Verify the file exists and has content
+            const stats = await fs.stat(target);
+            console.log(`Copied file size: ${stats.size} bytes`);
+            if (stats.size === 0) {
+                throw new Error('Copied file is empty');
+            }
+            return true;
+        } catch (error) {
+            console.error('Error during file copy:', error);
+            throw error;
+        }
+    }
+
+    async saveVideo(sourcePath, outputDir) {
+        try {
+            console.log('Starting video save process...');
+            console.log('Source path:', sourcePath);
+            console.log('Output directory:', outputDir);
+
+            // Get file extension
+            const videoExt = path.extname(sourcePath);
+            const outputVideoPath = path.join(outputDir, `original${videoExt}`);
+            console.log('Target video path:', outputVideoPath);
+
+            // Copy the file
+            await this.copyFile(sourcePath, outputVideoPath);
+            
+            // Double-check file exists
+            const exists = await fs.access(outputVideoPath)
+                .then(() => true)
+                .catch(() => false);
+
+            if (!exists) {
+                throw new Error('Video file not found after copying');
+            }
+
+            console.log('Video save completed successfully');
+            return outputVideoPath;
+        } catch (error) {
+            console.error('Error in saveVideo:', error);
+            throw error;
+        }
+    }
+
+    async processVideo(videoPath, outputDir) {
+        console.log('Starting video processing...');
+        console.log('Video path:', videoPath);
+        console.log('Output directory:', outputDir);
+
+        try {
+            // Create output directory
+            await fs.mkdir(outputDir, { recursive: true });
+            console.log('Output directory created/verified');
+
+            // Save video file first
+            console.log('Saving video file...');
+            const savedVideoPath = await this.saveVideo(videoPath, outputDir);
+            console.log('Video saved to:', savedVideoPath);
+
+            // List files in directory after video save
+            const filesAfterVideoSave = await fs.readdir(outputDir);
+            console.log('Files after video save:', filesAfterVideoSave);
+
+            // Extract audio from the original video path
+            const audioPath = path.join(outputDir, 'audio.wav');
+            await this.extractAudio(videoPath, audioPath);
+            console.log('Audio extracted successfully');
+
+            // Transcribe audio
+            const transcriptionResult = await this.transcribeAudio(audioPath);
+            const transcript = transcriptionResult.text;
+            console.log('Transcription completed');
+
+            // Generate summary
+            const processedData = await this.generateSummary(transcript);
+            console.log('Summary generated');
+
+            // Create PDF
+            const pdfPath = path.join(outputDir, 'transcript.pdf');
+            await this.createPDF(processedData, pdfPath);
+            console.log('PDF created');
+
+            // Save text file
+            const txtPath = path.join(outputDir, 'transcript.txt');
+            const txtContent = `Podsumowanie:\n\n${processedData.summary}\n\nDialog:\n\n` + 
+                processedData.dialogue.map(entry => `${entry.speaker}: ${entry.text}`).join('\n\n');
+            await fs.writeFile(txtPath, txtContent, 'utf8');
+            console.log('Text file saved');
+
+            // Clean up audio file
+            await fs.unlink(audioPath).catch(err => 
+                console.error('Warning: Could not delete audio file:', err)
+            );
+
+            // Final verification
+            const finalFiles = await fs.readdir(outputDir);
+            console.log('Final files in directory:', finalFiles);
+
+            if (!finalFiles.some(file => file.startsWith('original'))) {
+                throw new Error('Video file missing from final output');
+            }
+
+            return {
+                ...processedData,
+                pdfPath,
+                txtPath,
+                videoPath: savedVideoPath
+            };
+        } catch (error) {
+            console.error('Error in processVideo:', error);
+            throw error;
+        }
+    }
+
 
     async extractAudio(videoPath, outputPath) {
         return new Promise((resolve, reject) => {
@@ -242,7 +366,7 @@ class VideoProcessor {
     }
 
     wrapText(text, maxWidth, fontSize, font) {
-        
+        // Sprawdzenie czy text jest zdefiniowany
         if (!text) return [];
         
         const words = text.split(' ');
@@ -265,50 +389,6 @@ class VideoProcessor {
         }
     
         return lines;
-    }
-    
-
-    async processVideo(videoPath, outputDir) {
-        try {
-            await fs.mkdir(outputDir, { recursive: true });
-    
-            // Extract audio from video
-            const audioPath = `${outputDir}/audio.wav`;
-            await this.extractAudio(videoPath, audioPath);
-            console.log('Audio extracted successfully');
-    
-            // Transcribe audio
-            const transcriptionResult = await this.transcribeAudio(audioPath);
-            const transcript = transcriptionResult.text;
-            console.log('Transcription completed');
-    
-            // Generate summary and dialogue structure
-            const processedData = await this.generateSummary(transcript);
-            console.log('Summary and dialogue structure generated');
-    
-            // Create PDF
-            const pdfPath = path.join(outputDir, 'transcript.pdf');
-            await this.createPDF(processedData, pdfPath);
-            console.log('PDF created successfully');
-    
-            // Save raw transcript and summary as text files
-            const txtPath = path.join(outputDir, 'transcript.txt');
-            const txtContent = `Podsumowanie:\n\n${processedData.summary}\n\nDialog:\n\n` + 
-                processedData.dialogue.map(entry => `${entry.speaker}: ${entry.text}`).join('\n\n');
-            await fs.writeFile(txtPath, txtContent, 'utf8');
-    
-            // Clean up temporary audio file
-            await fs.unlink(audioPath);
-    
-            return {
-                ...processedData,
-                pdfPath,
-                txtPath
-            };
-        } catch (error) {
-            console.error('Error processing video:', error);
-            throw error;
-        }
     }
 }
 
