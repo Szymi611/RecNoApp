@@ -5,6 +5,7 @@ const path = require("path");
 const fs = require("fs").promises;
 const VideoProcessor = require("./VideoProcessor");
 const cors = require("cors");
+const bodyParser = require("body-parser")
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -12,6 +13,7 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ extended: true, limit: "500mb" }));
+app.use(bodyParser.json())
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -22,25 +24,30 @@ const storage = multer.diskStorage({
     cb(null, `${uniqueSuffix}${path.extname(file.originalname)}`);
   },
 });
-const upload = multer({ 
+
+const upload = multer(
+  {
     storage: storage,
     fileFilter: (req, file, cb) => {
-   
-        const allowedMimes = ['video/mp4', 'video/webm', 'video/ogg'];
-        if (allowedMimes.includes(file.mimetype)) {
-            cb(null, true);
-        } else {
-            cb(new Error('Invalid file type. Only MP4, WebM and OGG video files are allowed.'));
-        }
+      const allowedMimes = ["video/mp4", "video/webm", "video/ogg"];
+      if (allowedMimes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(
+          new Error(
+            "Invalid file type. Only MP4, WebM and OGG video files are allowed."
+          )
+        );
+      }
     },
     limits: {
-        fileSize: 1000 * 1024 * 1024 // 500MB limit
-    }
-  },
-  limits: {
-    fileSize: 500 * 1024 * 1024, // 500MB limit
-  },
-});
+      fileSize: 1000 * 1024 * 1024, // 500MB limit
+    },
+  }
+  // limits: {
+  //   fileSize: 500 * 1024 * 1024, // 500MB limit
+  // },
+);
 
 (async () => {
   try {
@@ -62,91 +69,106 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-app.post('/upload', upload.single('video'), async (req, res) => {
-    if (!req.file) {
-        console.log('No file uploaded');
-        return res.status(400).json({ error: 'No video file uploaded' });
-    }
-    console.log('File received:', req.file);
+app.post('/submit-email', (req,res) => {
+  const { email } = req.body;
 
-    console.log('File uploaded:', req.file);
-    console.log('File size:', req.file.size);
-    
-    let outputDir = null;
-    
-    try {
-        outputDir = path.join('output', path.parse(req.file.filename).name);
-        console.log('Processing video. Output directory:', outputDir);
-        
-        // Process the video and get results
-        const result = await processor.processVideo(req.file.path, outputDir);
-        
-        // Verify all required files exist
+  if(!email || !email.includes('@')){
+    return res.status(400).json({message: 'Invalid email address'})
+  }
+
+  console.log('Received email address is: ', email)
+  res.status(200).json({message: "Email received successfully"})
+
+})
+
+app.post("/upload", upload.single("video"), async (req, res) => {
+  if (!req.file) {
+    console.log("No file uploaded");
+    return res.status(400).json({ error: "No video file uploaded" });
+  }
+  console.log("File received:", req.file);
+
+  console.log("File uploaded:", req.file);
+  console.log("File size:", req.file.size);
+
+  let outputDir = null;
+
+  try {
+    outputDir = path.join("output", path.parse(req.file.filename).name);
+    console.log("Processing video. Output directory:", outputDir);
+
+    // Process the video and get results
+    const result = await processor.processVideo(req.file.path, outputDir);
+
+    // Verify all required files exist
+    const outputFiles = await fs.readdir(outputDir);
+    console.log("Files in output directory after processing:", outputFiles);
+
+    const videoFile = outputFiles.find((file) => file.startsWith("original"));
+    if (!videoFile) {
+      throw new Error(
+        "Video file not found in output directory after processing"
+      );
+    }
+
+    const pdfFile = outputFiles.find((file) => file.endsWith(".pdf"));
+    const txtFile = outputFiles.find((file) => file.endsWith(".txt"));
+
+    if (!pdfFile || !txtFile) {
+      throw new Error("PDF or TXT file missing from output");
+    }
+
+    // Only delete the source file after confirming all output files exist
+    await fs.unlink(req.file.path).catch((err) => {
+      console.error("Warning: Could not delete source file:", err);
+    });
+
+    // Get the directory name for URLs
+    const dirName = path.basename(outputDir);
+
+    const response = {
+      success: true,
+      data: {
+        summary: result.summary,
+        dialogue: result.dialogue,
+        pdfUrl: `/output/${dirName}/${pdfFile}`,
+        txtUrl: `/output/${dirName}/${txtFile}`,
+        videoUrl: `/output/${dirName}/${videoFile}`,
+      },
+    };
+
+    console.log("Sending success response:", response);
+    res.json(response);
+  } catch (error) {
+    console.error("Processing error:", error);
+
+    // Clean up in case of error
+    if (req.file?.path) {
+      await fs
+        .unlink(req.file.path)
+        .catch((err) => console.error("Error deleting uploaded file:", err));
+    }
+
+    if (outputDir) {
+      try {
         const outputFiles = await fs.readdir(outputDir);
-        console.log('Files in output directory after processing:', outputFiles);
-        
-        const videoFile = outputFiles.find(file => file.startsWith('original'));
-        if (!videoFile) {
-            throw new Error('Video file not found in output directory after processing');
-        }
-
-        const pdfFile = outputFiles.find(file => file.endsWith('.pdf'));
-        const txtFile = outputFiles.find(file => file.endsWith('.txt'));
-
-        if (!pdfFile || !txtFile) {
-            throw new Error('PDF or TXT file missing from output');
-        }
-
-        // Only delete the source file after confirming all output files exist
-        await fs.unlink(req.file.path).catch(err => {
-            console.error('Warning: Could not delete source file:', err);
-        });
-
-        // Get the directory name for URLs
-        const dirName = path.basename(outputDir);
-        
-        const response = {
-            success: true,
-            data: {
-                summary: result.summary,
-                dialogue: result.dialogue,
-                pdfUrl: `/output/${dirName}/${pdfFile}`,
-                txtUrl: `/output/${dirName}/${txtFile}`,
-                videoUrl: `/output/${dirName}/${videoFile}`
-            }
-        };
-
-        console.log('Sending success response:', response);
-        res.json(response);
-        
-    } catch (error) {
-        console.error('Processing error:', error);
-        
-        // Clean up in case of error
-        if (req.file?.path) {
-            await fs.unlink(req.file.path).catch(err => 
-                console.error('Error deleting uploaded file:', err)
-            );
-        }
-        
-        if (outputDir) {
-            try {
-                const outputFiles = await fs.readdir(outputDir);
-                await Promise.all(outputFiles.map(file => 
-                    fs.unlink(path.join(outputDir, file)).catch(() => {})
-                ));
-                await fs.rmdir(outputDir).catch(() => {});
-            } catch (cleanupError) {
-                console.error('Error during cleanup:', cleanupError);
-            }
-        }
-
-        res.status(500).json({ 
-            success: false,
-            error: 'Error processing video',
-            details: error.message 
-        });
+        await Promise.all(
+          outputFiles.map((file) =>
+            fs.unlink(path.join(outputDir, file)).catch(() => {})
+          )
+        );
+        await fs.rmdir(outputDir).catch(() => {});
+      } catch (cleanupError) {
+        console.error("Error during cleanup:", cleanupError);
+      }
     }
+
+    res.status(500).json({
+      success: false,
+      error: "Error processing video",
+      details: error.message,
+    });
+  }
 });
 
 app.get("/status/:jobId", async (req, res) => {
