@@ -19,6 +19,7 @@ for (let i = 0; i < 6; i++) {
 const VintageTV = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [currentJobId, setCurrentJobId] = useState(null);
 
   const handleStartRecording = async () => {
     await startScreenRecorder();
@@ -26,13 +27,17 @@ const VintageTV = () => {
   };
   
   const handleStopRecording = async () => {
-    await stopScreenRecorder();
+    const jobId = await stopScreenRecorder();
+    setCurrentJobId(jobId);
     setIsRecording(false);
   };
 
-
   const handleOpenModal = () => {
-    setIsModalOpen(true);
+    if (currentJobId) {
+      setIsModalOpen(true);
+    } else {
+      alert('Please record a video first');
+    }
   };
 
   const handleCloseModal = () => {
@@ -58,7 +63,11 @@ const VintageTV = () => {
           )}
 
           <CircleButton onClick={handleOpenModal}>Send Video</CircleButton>
-          <Modal isOpen={isModalOpen} onClose={handleCloseModal} />
+          <Modal 
+        isOpen={isModalOpen} 
+        onClose={handleCloseModal} 
+        jobId={currentJobId}
+      />
         </div>
       </div>
     </div>

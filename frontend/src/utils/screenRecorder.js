@@ -25,43 +25,48 @@ export const startScreenRecorder = async () => {
   }
 };
 
-export const stopScreenRecorder = async () => {
-  if (!recorder) {
-    console.log("No recording in progress");
-    return;
-  }
-  recorder.stop();
-  console.log("Recorder stopped")
-
-  recorder.onstop = async () => {
-    try {
-      const blob = new Blob(chunks, { type: "video/mp4" });
-      const file = new File([blob], "screen-recording.mp4", {
-        type: "video/mp4",
-      });
-
-      // Wysyłanie nagrania na backend
-      await sendRecordToBackend(file);
-
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-        stream = null;
-      }
-
-      chunks = [];
-      recorder = null;
-
-      console.log("Recording finalized");
-    } catch (error) {
-      console.error("Error finilizing recording:", error);
+export const stopScreenRecorder = () => {
+  return new Promise((resolve, reject) => {
+    if (!recorder) {
+      console.log("No recording in progress");
+      reject(new Error("No recording in progress"));
+      return;
     }
-  };
+    
+    recorder.stop();
+    console.log("Recorder stopped");
+
+    recorder.onstop = async () => {
+      try {
+        const blob = new Blob(chunks, { type: "video/mp4" });
+        const file = new File([blob], "screen-recording.mp4", {
+          type: "video/mp4",
+        });
+
+        const jobId = await sendRecordToBackend(file);
+
+        if (stream) {
+          stream.getTracks().forEach((track) => track.stop());
+          stream = null;
+        }
+
+        chunks = [];
+        recorder = null;
+
+        console.log("Recording finalized");
+        resolve(jobId);
+      } catch (error) {
+        console.error("Error finalizing recording:", error);
+        reject(error);
+      }
+    };
+  });
 };
 
 const sendRecordToBackend = async (file) => {
   const formData = new FormData();
   formData.append("video", file);
-  console.log(file)
+  console.log('Sending file:', file);
 
   try {
     const response = await fetch("http://localhost:3000/upload", {
@@ -69,13 +74,21 @@ const sendRecordToBackend = async (file) => {
       body: formData,
     });
 
-    if (response.ok) {
-      const result = await response.json();
-      console.log("File uploaded successfully:", result);
-    } else {
-      console.error("Failed to upload file");
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.details || 'Failed to upload file');
     }
+
+    const result = await response.json();
+    console.log("File uploaded successfully:", result);
+    
+    if (!result.data?.jobId) {
+      throw new Error('No jobId received from server');
+    }
+    
+    return result.data.jobId;
   } catch (error) {
-    console.error("Error during uploading file", error);
+    console.error("Error during uploading file:", error);
+    throw error;
   }
 };
