@@ -14,7 +14,7 @@ ffmpeg.setFfmpegPath(ffmpegPath);
 class VideoProcessor {
     constructor(openAiApiKey) {
         this.openai = new OpenAI({
-            apiKey: ""
+            apiKey: "key"
         });
     }
 
@@ -45,24 +45,47 @@ class VideoProcessor {
             console.log('Starting video save process...');
             console.log('Source path:', sourcePath);
             console.log('Output directory:', outputDir);
-
+    
             // Get file extension
             const videoExt = path.extname(sourcePath);
             const outputVideoPath = path.join(outputDir, `original${videoExt}`);
             console.log('Target video path:', outputVideoPath);
-
-            // Copy the file
-            await this.copyFile(sourcePath, outputVideoPath);
-            
-            // Double-check file exists
-            const exists = await fs.access(outputVideoPath)
-                .then(() => true)
-                .catch(() => false);
-
-            if (!exists) {
-                throw new Error('Video file not found after copying');
+    
+            // Compress and save video instead of just copying
+            await new Promise((resolve, reject) => {
+                ffmpeg(sourcePath)
+                    .size('320x?')  // Zmniejsz rozdzielczość, zachowując proporcje
+                    .videoBitrate('256k')  // Bardzo niski bitrate dla wideo
+                    .videoCodec('libx264')  // Użyj kodeka H.264
+                    .outputOptions([
+                        '-preset ultrafast',  // Najszybsza kompresja
+                        '-crf 40',  // Wysoka kompresja (wartości 0-51, wyższe = większa kompresja)
+                        '-movflags +faststart',
+                        '-profile:v baseline',
+                        '-level 3.0',
+                        '-pix_fmt yuv420p'
+                    ])
+                    .audioBitrate('16k')  // Bardzo niski bitrate dla audio
+                    .audioCodec('aac')
+                    .audioChannels(1)  // Mono audio
+                    .on('end', () => {
+                        console.log('Video compression completed');
+                        resolve();
+                    })
+                    .on('error', (err) => {
+                        console.error('Error during video compression:', err);
+                        reject(err);
+                    })
+                    .save(outputVideoPath);
+            });
+    
+            // Verify file exists and has content
+            const stats = await fs.stat(outputVideoPath);
+            console.log(`Compressed file size: ${stats.size} bytes`);
+            if (stats.size === 0) {
+                throw new Error('Compressed file is empty');
             }
-
+    
             console.log('Video save completed successfully');
             return outputVideoPath;
         } catch (error) {
@@ -306,7 +329,7 @@ class VideoProcessor {
                 yOffset -= 30;
             }
     
-            // Add dialogue section if exists
+            // Add dialogue section
             if (dialogueData?.dialogue && Array.isArray(dialogueData.dialogue)) {
                 page.drawText('Dialog:', {
                     x: 50,
@@ -325,7 +348,7 @@ class VideoProcessor {
     
                     if (entry?.speaker) {
                         // Draw speaker name
-                        page.drawText(`${entry.speaker}:`, {
+                        page.drawText(entry.speaker, {  // Usunięto dwukropek, bo jest już w danych
                             x: 50,
                             y: yOffset,
                             size: fontSize,
@@ -336,7 +359,6 @@ class VideoProcessor {
                     }
     
                     if (entry?.text) {
-                        // Draw speech content
                         const textLines = this.wrapText(entry.text, width - 120, fontSize, font);
                         for (const line of textLines) {
                             if (yOffset < 50) {

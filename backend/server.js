@@ -10,6 +10,7 @@ const nodeMailer = require("nodemailer")
 
 const app = express();
 const port = process.env.PORT || 3000;
+const latestFiles = new Map();
 
 app.use(cors());
 app.use(express.json({ limit: "500mb" }));
@@ -27,35 +28,63 @@ const storage = multer.diskStorage({
 });
 
 
-async function sendEmail(email, filePath){
+async function sendEmail(email, files) {
+  // Create a test account on Ethereal
+  const testAccount = await nodeMailer.createTestAccount();
+
+  // Create a transporter using Ethereal credentials
   let transporter = nodeMailer.createTransport({
-    service: "gmail",
+    host: "smtp.ethereal.email",
+    port: 587,
+    secure: false, // true for 465, false for other ports
     auth: {
-      // user: process.env.GMAIL_USER,
-      user: '',
-      pass: '',
-    }
+      user: testAccount.user,
+      pass: testAccount.pass,
+    },
   });
 
   let mailOptions = {
-    from: process.env.GMAIL_USER,
+    from: testAccount.user,
     to: email,
-    subject: 'Your transcription',
-    text: 'Please find the transcription PDF attached.',
-    attachments:[{
-      filename: path.basename(filePath),  
-      path: filePath,
-    }]
+    subject: 'Your transcription and video',
+    text: 'Please find the transcription PDF and video attached.',
+    attachments: []
+  };
+
+  // Add files if they exist
+  if (files.pdfPath) {
+    mailOptions.attachments.push({
+      filename: 'transcript.pdf',
+      path: files.pdfPath
+    });
+  }
+
+  if (files.videoPath) {
+    mailOptions.attachments.push({
+      filename: 'video' + path.extname(files.videoPath),
+      path: files.videoPath
+    });
+  }
+
+  if (files.txtPath) {
+    mailOptions.attachments.push({
+      filename: 'transcript.txt',
+      path: files.txtPath
+    });
   }
 
   try {
     let info = await transporter.sendMail(mailOptions);
-    console.log("Email sent: " + info.response);
+    console.log("Message sent: %s", info.messageId);
+    
+    // Show preview URL (only available in Ethereal)
+    console.log("Preview URL: %s", nodeMailer.getTestMessageUrl(info));
+    return info;
   } catch (error) {
     console.error("Error sending email:", error);
+    throw error;
   }
 }
-
 
 const upload = multer(
   {
@@ -101,27 +130,30 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-app.post('/submit-email', async (req,res) => {
-  const { email } = req.body;
+app.post('/submit-email', async (req, res) => {
+  const { email, jobId } = req.body;
 
-  if(!email || !email.includes('@')){
-    return res.status(400).json({message: 'Invalid email address'})
+  if (!email || !email.includes('@')) {
+    return res.status(400).json({ message: 'Invalid email address' });
   }
 
-  console.log('Received email address is: ', email)
-  res.status(200).json({message: "Email received successfully"})
+  if (!jobId) {
+    return res.status(400).json({ message: 'Missing job ID' });
+  }
 
-  const filePath = path.join(__dirname, 'output/??', 'your-transcription.pdf'); 
+  const files = latestFiles.get(jobId);
+  if (!files) {
+    return res.status(400).json({ message: 'No files found for this job ID' });
+  }
 
-  try{
-    await sendEmail(email, filePath)
-    res.status(200).json({message: "Email has been send"})
-  }catch (error) {
+  try {
+    await sendEmail(email, files);
+    res.status(200).json({ message: "Email sent successfully" });
+  } catch (error) {
     console.error("Error sending email:", error);
     res.status(500).json({ message: "Failed to send email", error: error.message });
   }
-
-})
+});
 
 const latestFolderInfo = {};
 
@@ -131,8 +163,6 @@ app.post("/upload", upload.single("video"), async (req, res) => {
     return res.status(400).json({ error: "No video file uploaded" });
   }
   console.log("File received:", req.file);
-
-  console.log("File uploaded:", req.file);
   console.log("File size:", req.file.size);
 
   let outputDir = null;
@@ -144,8 +174,13 @@ app.post("/upload", upload.single("video"), async (req, res) => {
     // Process the video and get results
     const result = await processor.processVideo(req.file.path, outputDir);
 
+    // Store the latest file paths for this upload
     const jobId = path.basename(outputDir);
-    latestFolderInfo[jobId] = {email}
+    latestFiles.set(jobId, {
+      pdfPath: path.join(outputDir, 'transcript.pdf'),
+      videoPath: path.join(outputDir, `original${path.extname(req.file.filename)}`),
+      txtPath: path.join(outputDir, 'transcript.txt')
+    });
 
     // Verify all required files exist
     const outputFiles = await fs.readdir(outputDir);
@@ -153,9 +188,7 @@ app.post("/upload", upload.single("video"), async (req, res) => {
 
     const videoFile = outputFiles.find((file) => file.startsWith("original"));
     if (!videoFile) {
-      throw new Error(
-        "Video file not found in output directory after processing"
-      );
+      throw new Error("Video file not found in output directory after processing");
     }
 
     const pdfFile = outputFiles.find((file) => file.endsWith(".pdf"));
@@ -165,17 +198,13 @@ app.post("/upload", upload.single("video"), async (req, res) => {
       throw new Error("PDF or TXT file missing from output");
     }
 
-    // Only delete the source file after confirming all output files exist
-    await fs.unlink(req.file.path).catch((err) => {
-      console.error("Warning: Could not delete source file:", err);
-    });
-
     // Get the directory name for URLs
     const dirName = path.basename(outputDir);
 
     const response = {
       success: true,
       data: {
+        jobId: jobId,
         summary: result.summary,
         dialogue: result.dialogue,
         pdfUrl: `/output/${dirName}/${pdfFile}`,
