@@ -6,6 +6,7 @@ const fs = require("fs").promises;
 const VideoProcessor = require("./VideoProcessor");
 const cors = require("cors");
 const bodyParser = require("body-parser")
+const nodeMailer = require("nodemailer")
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -24,6 +25,37 @@ const storage = multer.diskStorage({
     cb(null, `${uniqueSuffix}${path.extname(file.originalname)}`);
   },
 });
+
+
+async function sendEmail(email, filePath){
+  let transporter = nodeMailer.createTransport({
+    service: "gmail",
+    auth: {
+      // user: process.env.GMAIL_USER,
+      user: '',
+      pass: '',
+    }
+  });
+
+  let mailOptions = {
+    from: process.env.GMAIL_USER,
+    to: email,
+    subject: 'Your transcription',
+    text: 'Please find the transcription PDF attached.',
+    attachments:[{
+      filename: path.basename(filePath),  
+      path: filePath,
+    }]
+  }
+
+  try {
+    let info = await transporter.sendMail(mailOptions);
+    console.log("Email sent: " + info.response);
+  } catch (error) {
+    console.error("Error sending email:", error);
+  }
+}
+
 
 const upload = multer(
   {
@@ -69,7 +101,7 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-app.post('/submit-email', (req,res) => {
+app.post('/submit-email', async (req,res) => {
   const { email } = req.body;
 
   if(!email || !email.includes('@')){
@@ -79,7 +111,19 @@ app.post('/submit-email', (req,res) => {
   console.log('Received email address is: ', email)
   res.status(200).json({message: "Email received successfully"})
 
+  const filePath = path.join(__dirname, 'output/??', 'your-transcription.pdf'); 
+
+  try{
+    await sendEmail(email, filePath)
+    res.status(200).json({message: "Email has been send"})
+  }catch (error) {
+    console.error("Error sending email:", error);
+    res.status(500).json({ message: "Failed to send email", error: error.message });
+  }
+
 })
+
+const latestFolderInfo = {};
 
 app.post("/upload", upload.single("video"), async (req, res) => {
   if (!req.file) {
@@ -99,6 +143,9 @@ app.post("/upload", upload.single("video"), async (req, res) => {
 
     // Process the video and get results
     const result = await processor.processVideo(req.file.path, outputDir);
+
+    const jobId = path.basename(outputDir);
+    latestFolderInfo[jobId] = {email}
 
     // Verify all required files exist
     const outputFiles = await fs.readdir(outputDir);
