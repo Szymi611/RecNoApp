@@ -41,7 +41,7 @@ export default function Modal({ isOpen, onClose, jobId }) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-      <div className="bg-white p-6 rounded-lg shadow-xl">
+      <div className="bg-black p-6 rounded-lg shadow-xl">
         <p className="mb-4">Please enter email to receive the video and lecture transcript</p>
         
         <div className="mb-4">
