@@ -10,8 +10,6 @@ Aplikacja **Automated Meeting Notes Generator** to narzędzie webowe, które aut
   - Udostępnione slajdy i treści z tablic.
 - **Dane wyjściowe**:
   - Transkrypcje rozmów.
-  - Zrzuty ekranu prezentacji.
-  - OCR treści na wirtualnych tablicach.
   - Podsumowanie w formie notatki przesłanej e-mailem.
 - **Proces działania**:
   1. Przechwycenie danych audio i wideo podczas spotkania.
@@ -28,16 +26,13 @@ Aplikacja **Automated Meeting Notes Generator** to narzędzie webowe, które aut
    - Stylowanie w podejściu utility-first dla szybkiego tworzenia wizualnie spójnych aplikacji.
 2. **Backend**: Node.js
    - Szybkie i skalowalne przetwarzanie danych w czasie rzeczywistym.
-   - Łatwa integracja z bibliotekami do przetwarzania audio i OCR.
-3. **Konteneryzacja**: Docker
-   - Przenośność i spójne środowisko uruchomieniowe.
-   - Wsparcie dla backendu, frontendu oraz usług pomocniczych.
+   - Łatwa integracja z bibliotekami do przetwarzania audio.
+
 
 ## Architektura systemu
 System składa się z:
 - Modułu frontendu (React + Tailwind CSS).
 - Modułu backendu (Node.js) odpowiedzialnego za przetwarzanie danych.
-- Dockerowych kontenerów, które zapewniają niezależność środowisk.
 
 ## Diagramy UML
 Pełna dokumentacja techniczna zawiera:
@@ -46,18 +41,33 @@ Pełna dokumentacja techniczna zawiera:
 
 ## Jak uruchomić projekt?
 1. **Wymagania wstępne**:
-   - Zainstalowany Docker.
+   - Zainstalowany Node.js.
    - Przeglądarka internetowa.
+   - Środowisko do uruchomienia aplikacji (np. Visual Studio Code)
 2. **Uruchomienie aplikacji**:
    - Sklonuj repozytorium: 
      ```bash
      git clone <repozytorium>
      ```
-   - Uruchom Docker Compose:
+   - Otwórz aplikacje w VScode i przejdź do folderu backendu i uruchom serwer node:
      ```bash
-     docker-compose up
+     cd /backend
      ```
-   - Otwórz aplikację w przeglądarce: `http://localhost:3000`.
+        ```bash
+     node server.js
+     ```
+
+    - Następnie wróc do folderu głównego i przejdź do katalogu frontendu i uruchom aplikacje:
+        ```bash
+        cd.. 
+        ```
+        ```bash
+        cd /frontend
+        ```
+        ```bash
+        npm run dev
+        ```
+   - Otwórz aplikację w przeglądarce: `http://localhost:5173` bądź inny adres podany w konsoli jeśli powyższy jest zajęty.
 
 ## Członkowie zespołu
 - **Aleksy Dąda**
